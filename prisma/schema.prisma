@@ -1,0 +1,137 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum ArchetypeKey {
+  VALUE
+  GROWTH
+  INCOME
+  GARP
+  INDEX
+  MOMENTUM
+  CONTRARIAN
+  QUALITY
+  ESG
+  SPECULATIVE
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  EXPIRED
+}
+
+enum Recommendation {
+  BUY_MORE
+  HOLD
+  TRIM_PARTIAL_SELL
+  SELL_ALL
+}
+
+model User {
+  id                  String               @id @default(uuid())
+  email               String               @unique
+  name                String?
+  supabaseAuthId      String?              @unique // Optional if not logging in via Supabase Auth yet
+  profile             InvestorProfile?
+  holdings            Holding[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  Subscription        Subscription?
+  BrokerageConnection BrokerageConnection?
+  AlertPreference     AlertPreference?
+  PushSubscription    PushSubscription[]
+}
+
+model InvestorProfile {
+  id         String            @id @default(uuid())
+  userId     String            @unique
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  weightings ArchetypeWeight[]
+  updatedAt  DateTime          @updatedAt
+}
+
+model ArchetypeWeight {
+  id                String          @id @default(uuid())
+  investorProfileId String
+  investorProfile   InvestorProfile @relation(fields: [investorProfileId], references: [id], onDelete: Cascade)
+  archetype         ArchetypeKey
+  percentage        Int // e.g., 50 for 50%
+}
+
+model Subscription {
+  id                   String             @id @default(uuid())
+  userId               String             @unique
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stripeCustomerId     String             @unique
+  stripeSubscriptionId String?            @unique
+  status               SubscriptionStatus @default(TRIALING)
+  trialEndsAt          DateTime?
+  currentPeriodEndsAt  DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+}
+
+model BrokerageConnection {
+  id                  String    @id @default(uuid())
+  userId              String    @unique
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  snaptradeUserId     String    @unique
+  snaptradeUserSecret String
+  brokerageName       String?
+  lastSyncedAt        DateTime?
+  createdAt           DateTime  @default(now())
+}
+
+model Holding {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ticker            String
+  name              String
+  totalShares       Float
+  avgCostBasis      Float
+  currentPrice      Float
+  totalValue        Float
+  unrealizedGain    Float
+  unrealizedGainPct Float
+  taxLots           TaxLot[]
+  updatedAt         DateTime @updatedAt
+
+  @@unique([userId, ticker])
+}
+
+model TaxLot {
+  id         String   @id @default(uuid())
+  holdingId  String
+  holding    Holding  @relation(fields: [holdingId], references: [id], onDelete: Cascade)
+  shares     Float
+  costBasis  Float
+  acquiredAt DateTime
+  isLongTerm Boolean // Computed true if acquiredAt <= 1 year ago
+}
+
+model AlertPreference {
+  id                     String  @id @default(uuid())
+  userId                 String  @unique
+  user                   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  enablePush             Boolean @default(true)
+  minIntradayMovePercent Float   @default(5.0) // Threshold to trigger evaluation
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+}
